@@ -1,0 +1,65 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: privileged-pod
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["create", "get", "list", "watch", "delete"]
+- apiGroups: ["extensions", "apps"]
+  resources: ["deployments"]
+  verbs: ["create", "get", "list", "watch", "delete"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create", "get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: default-privileged-binding
+subjects:
+- kind: ServiceAccount
+  name: default
+  namespace: default
+roleRef:
+  kind: ClusterRole
+  name: privileged-pod
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ubuntu-daemonset
+  labels:
+    app: ubuntu-privileged-root-mount
+spec:
+  selector:
+    matchLabels:
+      app: ubuntu-privileged-root-mount
+  template:
+    metadata:
+      labels:
+        app: ubuntu-privileged-root-mount
+    spec:
+      hostPID: true
+      hostNetwork: true
+      hostIPC: true
+      containers:
+      - name: ubuntu-privileged-root-mount
+        image: ubuntu:latest
+        securityContext:
+          privileged: true
+        command: ["/bin/bash", "-c", "--"]
+        args: ["while true; do sleep 30; done;"]
+        volumeMounts:
+        - name: host-root
+          mountPath: /mnt/node
+      tolerations:
+      - operator: "Exists"
+      nodeSelector:
+        kubernetes.io/os: linux
+      volumes:
+      - name: host-root
+        hostPath:
+          path: /
+          type: Directory

@@ -1,0 +1,6 @@
+--audit-log-path=/var/log/apiserver/audit.log
+--audit-log-maxbackup=3
+--audit-log-maxsize=128
+--audit-log-maxage=3
+--audit-policy-file=/var/snap/microk8s/current/args/kube-api-audit-policy-all.yaml
+--audit-webhook-config-file=/var/snap/microk8s/current/args/falco-kube-apiserver-audit-webhook.yaml

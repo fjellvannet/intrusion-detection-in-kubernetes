@@ -1,0 +1,60 @@
+driver:
+  kind: ebpf
+
+collectors:
+  kubernetes:
+    enabled: true
+falcosidekick:
+  enabled: true
+  webui:
+    enabled: true
+
+  config:
+    kafka:
+      hostport: "kafka.elastic-system.svc.cluster.local"  # Adjust with your Kafka broker address
+      topic: "falco-events"  # Your Kafka topic
+      username: "user1"  # Kafka username
+      topiccreation: true
+      sasl: "PLAIN" # Kafka SASL/PLAIN authentication
+      #password: "your_kafka_password"  # Kafka password set via command line
+
+services:
+  - name: k8saudit-webhook
+    type: NodePort
+    ports:
+      - port: 9765 # See plugin open_params
+        nodePort: 30007
+        protocol: TCP
+
+falcoctl:
+  config:
+    artifact:
+      install:
+        # -- Resolve the dependencies for artifacts.
+        resolveDeps: true
+        # -- List of artifacts to be installed by the falcoctl init container.
+        # Only rulesfile, the plugin will be installed as a dependency.
+        refs: 
+          - k8saudit-rules:0.7
+          - falco-rules:3.1.0
+      follow:
+        # -- List of artifacts to be followed by the falcoctl sidecar container.
+        refs: 
+          - k8saudit-rules:0.7
+          - falco-rules:3.1.0
+  artifact:
+    install:
+      # -- Enable the init container. We do not recommend installing (or following) plugins for security reasons since they are executable objects.
+      enabled: true
+    follow:
+      # -- Enable the sidecar container. We do not support it yet for plugins. It is used only for rules feed such as k8saudit-rules rules.
+      enabled: true       
+
+falco:
+  stdout_output:
+    enabled: false
+  rules_file:
+    - /etc/falco/rules.d
+    - /etc/falco/falco_rules.yaml
+    - /etc/falco/k8s_audit_rules.yaml
+  load_plugins: [k8saudit, json]

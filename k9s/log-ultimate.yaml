@@ -1,0 +1,149 @@
+plugins:
+  # See https://k9scli.io/topics/plugins/
+  # This plugin leverages shortcuts for many functions you might find useful while working with logs in k9s
+  # Includes functions from the log-full, log-jq and log-stern plugins, but adapted to better work together
+  #
+  # External dependencies:
+  # - stern (https://github.com/stern/stern)
+  # - jq (https://jqlang.github.io/jq/)
+  #
+  # Both must be available on path. If you do not need one of them, just remove the shortcuts associated with it.
+  #
+  # If the plugins fail to load: Make sure that:
+  # - no shortcut is used twice in this file
+  # - you do not use any shortcut that is assigned in k9s from before.
+  # You'll just have to trial and error until you find more shortcuts that are not taken yet
+  logs-follow:
+    shortCut: Shift-G
+    description: logs -f
+    scopes:
+    - po
+    command: kubectl
+    background: false
+    args:
+    - logs
+    - -f
+    - $NAME
+    - -n
+    - $NAMESPACE
+    - --context
+    - $CONTEXT
+    - --kubeconfig
+    - $KUBECONFIG
+  logs-stern-follow: # Note: only shows the currently selected pod unless a filter is set with /
+    shortCut: Shift-Y
+    confirm: false
+    description: "logs|stern"
+    scopes:
+      - pods
+    command: stern
+    background: false
+    args:
+    - "$FILTER"
+    - -n
+    - $NAMESPACE
+    - --context
+    - $CONTEXT
+    - --kubeconfig
+    - $KUBECONFIG
+  logs-stern-follow-all: # Follows all the logs from all the pods in this namespace
+    shortCut: Ctrl-Y
+    confirm: false
+    description: "logs|stern all"
+    scopes:
+      - pods
+    command: stern
+    background: false
+    args:
+    - ".*"
+    - -n
+    - $NAMESPACE
+    - --context
+    - $CONTEXT
+    - --kubeconfig
+    - $KUBECONFIG
+  logs-less: # opens the logs in less to be searchable (but does not follow)
+    shortCut: Shift-L
+    description: "logs|less"
+    scopes:
+    - po
+    command: bash
+    background: false
+    args:
+    - -c
+    - '"$@" | less'
+    - dummy-arg
+    - kubectl
+    - logs
+    - $NAME
+    - -n
+    - $NAMESPACE
+    - --context
+    - $CONTEXT
+    - --kubeconfig
+    - $KUBECONFIG
+  logs-less-stern: # opens the stern logs in less to be searchable (but does not follow). A filter must be active with / to see multiple pods (otherwise only the selected pod is shown)
+    shortCut: Ctrl-L
+    description: "logs|stern|less"
+    scopes:
+    - po
+    command: bash
+    background: false
+    args:
+    - -c
+    - '"$@" | less -R'
+    - dummy-arg
+    - stern
+    - --no-follow
+    - --color
+    - always
+    - "$FILTER"
+    - -n
+    - $NAMESPACE
+    - --context
+    - $CONTEXT
+    - --kubeconfig
+    - $KUBECONFIG
+  logs-less-stern-all: # opens the stern logs from all the pods in this namespace in less (but does not follow)
+    shortCut: Ctrl-T
+    description: "logs|stern all|less"
+    scopes:
+    - po
+    command: bash
+    background: false
+    args:
+    - -c
+    - '"$@" | less -R'
+    - dummy-arg
+    - stern
+    - --no-follow
+    - --color
+    - always
+    - ".*"
+    - -n
+    - $NAMESPACE
+    - --context
+    - $CONTEXT
+    - --kubeconfig
+    - $KUBECONFIG
+  logs-jq-less: # parses the logs through jq for readability before sending them to less (does not follow)
+    shortCut: Ctrl-J
+    confirm: false
+    description: "logs|jq|less"
+    scopes:
+      - po
+    command: bash
+    background: false
+    args:
+    - -c
+    - '"$@" | jq --color-output | less -R'
+    - dummy-arg
+    - kubectl
+    - logs
+    - $NAME
+    - -n
+    - $NAMESPACE
+    - --context
+    - $CONTEXT
+    - --kubeconfig
+    - $KUBECONFIG

@@ -1,0 +1,32 @@
+apiVersion: apps/v1
+kind: DaemonSet
+metadata:
+  name: ubuntu-root-mount
+  labels:
+    app: ubuntu-root-mount
+spec:
+  selector:
+    matchLabels:
+      app: ubuntu-root-mount
+  template:
+    metadata:
+      labels:
+        app: ubuntu-root-mount
+    spec:
+      containers:
+      - name: ubuntu-root-mount
+        image: ubuntu:latest
+        command: ["/bin/sh", "-c", "--"]
+        args: ["while true; do sleep 30; done;"]
+        volumeMounts:  # Add this section
+        - name: host-root
+          mountPath: /mnt/node
+      tolerations:
+      - operator: "Exists"
+      nodeSelector:
+        kubernetes.io/os: linux
+      volumes:
+      - name: host-root
+        hostPath:
+          path: /
+          type: Directory

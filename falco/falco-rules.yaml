@@ -1,0 +1,12 @@
+customRules:
+  rules-poc.yaml: |-
+    - rule: Read Etc Hosts File
+      desc: Detect any attempt to read /etc/hosts file from within a pod. The /etc/hosts file is crucial for network configuration and its unauthorized access or modification could indicate reconnaissance or malicious activity within the pod.
+      condition: >
+        evt.type=open and evt.dir=< 
+        and fd.name=/etc/hosts
+        and container.id != host
+      output: >
+        Detected read access to /etc/hosts (command=%proc.cmdline container_id=%container.id container_name=%container.name k8s_pod_name=%k8s.pod.name k8s_ns=%k8s.ns.name evt_type=%evt.type fd=%fd.name)
+      priority: INFORMATIONAL
+      tags: [filesystem, container, k8s, mitre_discovery]

@@ -1,0 +1,196 @@
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: vector-config
+data:
+  vector.yaml: |
+    sources:
+      audit-files:
+        type: file
+        include:
+          - /tmp/*
+    transforms:
+      audit-files-json-parser-and-redaction: 
+        inputs:
+          - audit-files
+        type: remap
+        reroute_dropped: true
+        source: |-
+          # Ensure that the message is recognised as json
+          # Setting a max_depth because elastic can get very unhappy with how nested k8s objects are
+          # The depth is low because elastic requires all messages to have the same fields, and deeply
+          # nested objects like pods don't match the schema of things like configmaps
+          . = parse_json!(.message, max_depth: 2)
+          # Remove managedFields as they often cause elastic search ingestion issues
+          del(.request.object.metadata.managedFields)
+          # remove any empty objects as elastic search gets unhappy with them, 
+          # managedFields are a bad example of this
+          . = compact!(., recursive:true, array:true, object:true, null: true)
+          # remove objects where the key is a dot, as elasticsearch refuses to ingest anything containing these
+          # again, managedFields are terrible for this
+          . = remove!(., path: ["."])
+          # set the timestamp in a kibana friendly way from the custom field kube-audit-rest uses
+          ."@timestamp" = .requestReceivedTimestamp
+          # redact the actual value of a secret
+          
+          if .request.requestKind.kind == "Secret" {
+            del(.request.object.data)
+            .request.object.data.redacted = "REDACTED"
+            del(.request.oldObject.data)
+            .request.oldObject.data.redacted = "REDACTED"
+          }
+      filter-spam:
+        inputs:
+          - audit-files-json-parser-and-redaction
+        type: filter
+        condition:
+          type: "vrl"
+          source: |-
+            # It's unlikely that anyone needs to care about leases and they're very very chatty
+            # TokenReviews are only requested by well behaved kubernetes clients, so can be ignored as they're low value to noise
+            .request.kind.group != "coordination.k8s.io" && .request.kind.kind != "TokenReview"
+      add_fields: # add data_stream fields
+        type: remap
+        inputs: [filter-spam]
+        source: |-
+          .data_stream.namespace = "all"
+          .data_stream.dataset = "kubernetes-kube-audit-rest"
+          .data_stream.type = "logs"
+    sinks:
+      elastic-sink:
+        inputs:
+          - add_fields
+        type: elasticsearch
+        api_version: v8
+        data_stream:
+          namespace: all
+          dataset: kubernetes-kube-audit-rest
+          type: logs
+        bulk:
+          action: "create" # required for data_stream to work
+          # the index name must be <data_stream.namespace>-<data_stream.dataset>-<data_stream.type>
+          # make sure the data_stream fields are set accordingly in the add_fields transform and the
+          # data_stream section of the sink. If they don't align, Elasticsearch does not accept the data
+          index: "logs-kubernetes-kube-audit-rest-all"
+        endpoints:
+        - https://elasticsearch-es-http.elastic-system:9200
+        auth:
+          strategy: basic
+          user: elastic
+          password: "${ESP:?err}"
+        mode:
+          bulk
+        tls: # TODO: fix this to actually accept the ES self signed certificates
+          verify_certificate: false
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: kube-audit-rest
+  name: kube-audit-rest
+spec:
+  progressDeadlineSeconds: 600
+  replicas: 1 # Can be HA
+  revisionHistoryLimit: 10
+  selector:
+    matchLabels:
+      app: kube-audit-rest
+  strategy:
+    rollingUpdate:
+      maxSurge: 25%
+      maxUnavailable: 25%
+    type: RollingUpdate
+  template:
+    metadata:
+      labels:
+        app: kube-audit-rest
+    spec:
+      automountServiceAccountToken: false
+      containers:
+      - image: ghcr.io/richardoc/kube-audit-rest:ad68f71978e8cd610b5b06769fab301cf9ee74d0-distroless@sha256:2444c1207156681c4ed04e7bb02662820c9bfb31b50e8fe5b0112b3f8f577d42
+        imagePullPolicy: IfNotPresent
+        name: kube-audit-rest
+        resources:
+          requests:
+            cpu:  "2m"
+            memory: "10Mi"
+          limits:
+            cpu: "1"
+            memory: "32Mi"
+        ports:
+        - containerPort: 9090
+          protocol: TCP
+          name: https
+        - containerPort: 55555
+          protocol: TCP
+          name: metrics
+        volumeMounts:
+        - name: certs
+          mountPath: "/etc/tls"
+          readOnly: true
+        - name: tmp
+          mountPath: "/tmp"
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: 
+            - ALL 
+      - name: vector
+        image: docker.io/timberio/vector:0.33.0-distroless-static@sha256:90e14483720ea7dfa5c39812a30f37d3bf3a94b6611787a0d14055b8ac31eb1f
+        resources:
+          requests:
+            cpu:  "2m"
+            memory: "10Mi"
+          limits:
+            cpu: "2"
+            memory: "512Mi"
+        env:
+        - name: ESP
+          valueFrom:
+            secretKeyRef:
+              name: elasticsearch-es-elastic-user
+              key: elastic
+        volumeMounts:
+        - name: tmp
+          mountPath: "/tmp"
+          readOnly: true
+        - name: vector-config
+          mountPath: "/etc/vector/"
+          readOnly: true
+      restartPolicy: Always
+      terminationGracePeriodSeconds: 30
+      volumes:
+      - name: certs
+        secret:
+          secretName: kube-audit-rest
+      - name: tmp
+        emptyDir:
+          sizeLimit: 2Gi # Based on default of 3 files at 500Mi
+      - name: vector-config
+        configMap:
+          name: vector-config
+---
+apiVersion: v1
+kind: Service
+metadata:
+  labels:
+    app: kube-audit-rest
+  name: kube-audit-rest
+spec:
+  ports:
+  - name: https
+    port: 443
+    protocol: TCP
+    targetPort: https
+  - name: metrics
+    port: 55555
+    protocol: TCP
+    targetPort: metrics
+  selector:
+    app: kube-audit-rest
+  sessionAffinity: None
+  type: ClusterIP
