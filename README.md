@@ -1,4 +1,4 @@
-# Intrusion detection in Kubernetes - a study of tools and techniques
+# Intrusion detection in Kubernetes - A study of tools and techniques
 This repository demonstrates how a Proof of Concept of the applications demonstrated in Lukas Neuenschwander's master's thesis "Intrusion Detecion in Kubernetes - a study of tools and techniques" can be installed on an x86-based Ubuntu Linux server that can be a virtual machine. Most of the commands can be applied on other server operating systems or Kubernetes distributions as well. The thesis document can be found in this repository at [`./Lukas Neuenschwander MSc. Intrusion Detection in Kubernetes - A study of tools and techniques.pdf`](Lukas%20Neuenschwander%20MSc.%20Intrusion%20Detection%20in%20Kubernetes%20-%20A%20study%20of%20tools%20and%20techniques.pdf). 
 
 ## 1. Install and configure the microk8s cluster
